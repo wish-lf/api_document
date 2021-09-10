@@ -1,0 +1,246 @@
+#centos7:
+#安装Docker:
+#1: 设置yum
+yum install -y  yum-utils
+#2: 用阿里docker镜像
+yum-config-manager --add-repo http://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
+
+#设置docker加速器:
+#mkdir /etc/docker
+vi  /etc/docker/daemon.json
+{
+  "registry-mirrors": ["https://hub-mirror.c.163.com"]
+}
+
+#设置开机启动:
+systemctl enable docker
+#启动服务:
+systemctl start docker
+#查看状态
+systemctl status docker
+
+#设置权限(输入root密码)
+su root
+usermod -aG docker <username>
+
+
+#查询docker当前镜像
+docker images
+#查询docker可安装的镜像
+docker search jenkins
+
+#拉取docker镜像(安装jenkins)
+docker pull jenkinsci/blueocean
+#建立docker镜像(.指定目录)
+docker build -t <镜像名称> .
+
+#运行docker容器(-v挂载目录)
+#1: 创建挂载文件夹
+mkdir /var/jenkins_home
+#2: 设置挂载文件夹权限
+chown -R 1000 /var/jenkins_home
+#3: 运行容器
+docker run -d --name jenkins --privileged=true --restart=always -u root -p 8090:8080 -p 50000:50000 -v /var/jenkins_home:/var/jenkins_home -v /usr/bin/docker:/usr/bin/docker -v /var/run/docker.sock:/var/run/docker.sock jenkinsci/blueocean
+
+#查看容器(-a:所有,没有-a:正在运行)
+docker ps -a
+
+#进入容器
+docker exec -it jenkins bash
+
+#停止容器
+docker stop jenkins 
+
+#删除容器(-f强制删除)
+docker rm -f <container_id>
+
+#删除镜像(-f强制删除)
+docker rmi -f <container_id>
+
+#设置自动启动镜像
+docker update --restart=always  <container_id>
+
+#编辑docker命令权限:
+chmod -R 777 /usr/bin/docker
+chmod -R 777 /var/run/docker.sock
+
+
+#docker安装mysql
+#1: 拉取最新版mysql镜像
+docker pull mysql
+#2: 创建my.cnf配置文件
+vim /var/mysql_home/my.cnf
+--------------------------------
+[mysqld]
+user=mysql
+character-set-server=utf8
+default_authentication_plugin=mysql_native_password
+secure_file_priv=/var/lib/mysql
+expire_logs_days=7
+sql_mode=STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+max_connections=1000
+
+[client]
+default-character-set=utf8
+
+[mysql]
+default-character-set=utf8
+--------------------------------
+#3运行mysql容器
+docker run \
+--restart=always \
+-p 3306:3306 --name mysql \
+-v /var/mysql_home/log:/var/log/mysql \
+-v /var/mysql_home/data:/var/lib/mysql \
+-v /var/mysql_home/my.cnf:/etc/mysql/my.cnf \
+-v /var/mysql_home/conf.d:/etc/mysql/conf.d \
+-e MYSQL_ROOT_PASSWORD=123456 \
+-d mysql:latest
+
+
+#docker安装redis
+#1: 拉取最新版mysql镜像
+docker pull redis
+#2: 创建redis.conf配置文件(官网下载)
+vim /var/redis_home/redis.conf
+#2.1: 修默认配置
+--------------------------------
+#注释掉这部分，这是限制redis只能本地访问
+#bind 127.0.0.1
+#默认yes，开启保护模式，限制为本地访问
+protected-mode no
+#默认no，改为yes意为以守护进程方式启动，可后台运行，除非kill进程，改为yes会使配置文件方式启动redis失败
+daemonize no
+#输入本地redis数据库存放文件夹
+dir /data
+#日志存放文件夹
+logfile /data/redis.log
+#redis持久化
+appendonly yes
+--------------------------------
+#3: 运行redis容器
+docker run \
+--restart=always \
+-p 6379:6379 --name redis \
+-v /var/redis_home/redis.conf:/etc/redis/redis.conf \
+-v /var/redis_home/data:/data \
+-d redis redis-server /etc/redis/redis.conf --appendonly yes
+#4测试redis容器
+#4.1: 进入容器
+docker exec -it redis redis-cli
+#4.2: 输入密码
+auth 123456
+
+
+#docker安装rabbitmq
+#1: 拉取最新版rabbitmq镜像(后面不带management，启动rabbitmq后是无法打开管理界面的)
+docker pull rabbitmq:management
+#2: 运行rabbitmq容器
+docker run \
+--restart=always \
+--name rabbitmq \
+-p 15672:15672 -p 5672:5672 -p 25672:25672 -p 61613:61613 -p 1883:1883  \
+-e RABBITMQ_DEFAULT_USER=admin -e RABBITMQ_DEFAULT_PASS=admin \
+-d rabbitmq:management
+
+
+#jenkins
+#设置加速器
+vi  /var/jenkins_home/hudson.model.UpdateCenter.xml
+<?xml version='1.1' encoding='UTF-8'?>
+<sites>
+  <site>
+    <id>default</id>
+    <url>https://mirrors.tuna.tsinghua.edu.cn/jenkins/updates/update-center.json</url>
+  </site>
+</sites>
+
+#查看初始密码:(9952fb44b3b94cc1bfd5b072621b1d86)
+vi /var/jenkins_mount/secrets/initialAdminPassword
+
+#构建VUE项目
+#1: 安装NODEJS插件并在全局工具配置 NODEJS版本安装
+#2: 配置源代码管理 Git / SVN
+#3: 构建触发器:
+#3.1:勾选 GitHub hook trigger for GITScm polling (每源代码变更时触发)
+#3.2:勾选 轮询 SCM ; 日程表:H/5 * * * * (每5分钟检测源代码变更时触发)
+#4: 构建环境
+#4.1: 勾选 Delete workspace before build starts
+#4.2: 勾选 Provide Node & npm bin/ folder to PATH ; 选择NODEJS版本
+#5:构建
+#5.1:执行shell
+echo $PATH
+node -v
+npm -v
+npm install
+npm run build
+exit
+#5.2:执行shell
+#!/bin/bash
+# 获取短版本号
+NAME=test_vue
+PORT=8090
+GITHASH=`git rev-parse --short HEAD`
+echo '---------------短版本号:$GITHASH-----------------------------------'
+echo '---------------stop and rm docker container start------------------'
+docker version
+docker stop $NAME || true
+docker rm $NAME || true
+echo '---------------stop and rm docker container end--------------------'
+echo '---------------build docker start----------------------------------'
+docker build -t $NAME:latest .
+echo '---------------build docker end------------------------------------'
+echo '---------------run docker start------------------------------------'
+docker run --name $NAME --restart=always -d -p $PORT:80 -v /var/jenkins_home/workspace/$NAME/dist:/usr/share/nginx/html -v /var/jenkins_home/workspace/$NAME/nginx.conf:/etc/nginx/nginx.conf $NAME:latest
+echo '---------------run docker end--------------------------------------'
+
+#构建.netCore项目
+#1: 安装插件
+#2: 配置源代码管理 Git / SVN
+#3: 构建触发器:
+#3.1:勾选 GitHub hook trigger for GITScm polling (每源代码变更时触发)
+#3.2:勾选 轮询 SCM ; 日程表:H/5 * * * * (每5分钟检测源代码变更时触发)
+#4: 构建环境
+#4.1: 勾选 Delete workspace before build starts
+#5:构建
+#5.1:执行shell
+#!/bin/bash
+# 获取短版本号
+PNAME=TestWeb
+NAME=testweb
+PORT=8005
+GITHASH=`git rev-parse --short HEAD`
+echo '---------------短版本号:$GITHASH-----------------------------------'
+echo '---------------stop and rm docker container start------------------'
+docker version
+docker stop $NAME || true
+docker rm $NAME || true
+echo '---------------stop and rm docker container end--------------------'
+echo '---------------copy dockerfile start-------------------------------'
+cp -rvf ./$PNAME/Dockerfile ./Dockerfile
+echo '---------------copy dockerfile end---------------------------------'
+echo '---------------build docker start----------------------------------'
+docker build -t $NAME:latest .
+echo '---------------build docker end------------------------------------'
+echo '---------------run docker start------------------------------------'
+docker run --name $NAME --restart=always -d -p $PORT:80 $NAME:latest
+echo '---------------run docker end--------------------------------------'
+
+
+#vue:
+#新建Vue项目(以当前目录路径)
+vue init webpack <name>
+
+#运行Vue项目
+#1: 安装组件库
+npm install
+#2.1: 启动
+npm start
+#2.2: 运行dev版本
+npm run dev
+
+#ps:失败清空处理
+rm node_modules
+rm package-lock.json
+npm cache clear --force
+npm install
